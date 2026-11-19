@@ -1,0 +1,1 @@
+export const CLAIM_INACTIVITY_DAYS = 15

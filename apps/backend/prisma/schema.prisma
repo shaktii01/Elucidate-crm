@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  SALESPERSON
+}
+
+enum LeadStatus {
+  NEW
+  HOT
+  WARM
+  COLD
+  NOT_CONNECTED
+  NOT_INTERESTED
+  JUNK
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  HALF_DAY
+  LEAVE
+}
+
+model User {
+  id                String             @id @default(cuid())
+  name              String
+  employeeId        String?            @unique
+  email             String             @unique
+  passwordHash      String
+  role              UserRole           @default(SALESPERSON)
+  active            Boolean            @default(true)
+  officeLatitude    Float?
+  officeLongitude   Float?
+  officeRadiusMeters Int                @default(100)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  createdLeads      Lead[]             @relation("LeadCreator")
+  assignedLeads     Lead[]             @relation("LeadAssignee")
+  claimedLeads      Lead[]             @relation("LeadClaimer")
+  quotations        Quotation[]
+  refreshSessions   RefreshSession[]
+  notifications     Notification[]
+  pushSubscriptions PushSubscription[]
+  attendances       Attendance[]       @relation("AttendanceUser")
+  markedAttendance  Attendance[]       @relation("AttendanceMarker")
+  @@map("crm_users")
+
+}
+
+model Lead {
+  id                       String         @id @default(cuid())
+  name                     String         @default("New Client")
+  phone                    String
+  normalizedPhone          String
+  isDuplicate              Boolean        @default(false)
+  status                   LeadStatus     @default(NEW)
+  createdById              String
+  assignedToId             String?
+  statusChangedAt          DateTime       @default(now())
+  lastQualifyingActivityAt DateTime?
+  claimEligibleAt          DateTime?
+  claimPoolEnteredAt       DateTime?
+  claimedById              String?
+  claimedAt                DateTime?
+  isClaimable              Boolean        @default(false)
+  doNotContact             Boolean        @default(false)
+  junkReason               String?
+  customerDetails          Json?
+  followUpAt               DateTime?
+  followUpNotifiedAt       DateTime?
+  remarks                  Json           @default("[]")
+  activities               Json           @default("[]")
+  ownershipHistory         Json           @default("[]")
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+  createdBy                User           @relation("LeadCreator", fields: [createdById], references: [id])
+  assignedTo               User?          @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  claimedBy                User?          @relation("LeadClaimer", fields: [claimedById], references: [id])
+  quotations               Quotation[]
+  notifications            Notification[]
+
+  @@index([normalizedPhone])
+  @@index([isDuplicate])
+  @@index([assignedToId, status, updatedAt])
+  @@index([isClaimable, claimEligibleAt, status])
+  @@index([claimedById, claimedAt])
+  @@index([followUpAt, followUpNotifiedAt])
+  @@map("crm_leads")
+}
+
+model Quotation {
+  id          String          @id @default(cuid())
+  leadId      String
+  customer    Json
+  number      String?
+  date        DateTime        @default(now())
+  amount      Float
+  status      QuotationStatus @default(DRAFT)
+  createdById String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  lead        Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  createdBy   User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([leadId, status])
+  @@index([createdAt])
+  @@map("crm_quotations")
+}
+
+model RefreshSession {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("crm_refresh_sessions")
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  message   String?
+  type      String?
+  leadId    String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead      Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+  @@map("crm_notifications")
+}
+
+model PushSubscription {
+  id             String   @id @default(cuid())
+  userId         String
+  endpoint       String   @unique @db.VarChar(2048)
+  expirationTime Float?
+  keys           Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("crm_push_subscriptions")
+}
+
+model Attendance {
+  id         String           @id @default(cuid())
+  userId     String
+  date       DateTime         @db.Date
+  status     AttendanceStatus
+  checkIn    String           @default("")
+  checkOut   String           @default("")
+  checkInAt  DateTime?
+  checkOutAt DateTime?
+  note       String           @default("") @db.VarChar(500)
+  markedById String
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  user       User             @relation("AttendanceUser", fields: [userId], references: [id], onDelete: Cascade)
+  markedBy   User             @relation("AttendanceMarker", fields: [markedById], references: [id])
+
+  @@unique([userId, date])
+  @@index([date])
+  @@map("crm_attendance")
+}

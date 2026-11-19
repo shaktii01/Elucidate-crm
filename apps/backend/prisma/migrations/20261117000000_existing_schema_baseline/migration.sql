@@ -1,0 +1,1 @@
+﻿-- Existing XAMPP ERP schema baseline; CRM tables are added by the next migration.
